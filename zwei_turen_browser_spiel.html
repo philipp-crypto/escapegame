@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Four Level Escape Game</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: radial-gradient(circle at top, #2c2c2c, #000);
+      color: #f5f5f5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .game {
+      background: rgba(30,30,30,0.95);
+      padding: 30px;
+      border-radius: 16px;
+      width: 620px;
+      text-align: center;
+      box-shadow: 0 0 30px rgba(0,0,0,0.8);
+    }
+    button {
+      padding: 12px 24px;
+      margin: 10px;
+      font-size: 16px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      background: #444;
+      color: #fff;
+    }
+    button:hover { background: #666; }
+    .timer { color: #ff6b6b; font-size: 18px; margin: 10px 0; }
+    .graphic { font-size: 60px; margin: 10px 0; }
+    .bucket-container { display:flex; justify-content:space-around; margin:20px 0; }
+    .bucket { width:90px; height:160px; border:2px solid #fff; position:relative; background:#333; border-radius:10px; overflow:hidden; }
+    .water { background:#00aaff; width:100%; position:absolute; bottom:0; transition: height 0.3s ease; }
+    .bucket-label { position:absolute; top:5px; width:100%; font-size:14px; }
+    label { display:block; margin:10px 0; }
+    input[type=range] { width:70%; }
+  </style>
+</head>
+<body>
+  <div class="game" id="game"></div>
+
+  <script>
+    const gameDiv = document.getElementById('game');
+    let levels = [1,2,3,4];
+    let levelIndex = 0;
+    let remainingTime = 180;
+    let timerInterval;
+    let lastRoll = 0;
+    let totalRemainingSeconds = 0; // HIGHSCORE
+
+    function shuffleLevels(){
+      for(let i=levels.length-1;i>0;i--){
+        const j=Math.floor(Math.random()*(i+1));
+        [levels[i],levels[j]]=[levels[j],levels[i]];
+      }
+    }
+
+    function startGame(){
+      totalRemainingSeconds = 0;
+      levelIndex = 0;
+      shuffleLevels();
+      showScenario(
+        '🕯️ The Forgotten Vault',
+        'Four ancient doors stand between you and freedom. Each mechanism drains precious time. Can you escape?',
+        'Begin Escape',
+        ()=>startLevel()
+      );
+    }
+
+    function showScenario(title,text,buttonText,callback){
+      gameDiv.innerHTML=`
+        <h1>${title}</h1>
+        <div class="graphic">🏰</div>
+        <p>${text}</p>
+        <button onclick='(${callback.toString()})()'>${buttonText}</button>
+      `;
+    }
+
+    function startLevel(){
+      if(levelIndex>=levels.length){
+        showEndScenario();
+        return;
+      }
+      const currentLevel = levels[levelIndex];
+      if(currentLevel===1||currentLevel===2) startDiceLevel(currentLevel);
+      else startBucketLevel(currentLevel);
+    }
+
+    function startTimer(onFail){
+      remainingTime = 180;
+      updateTimer();
+      timerInterval = setInterval(()=>{
+        remainingTime--;
+        updateTimer();
+        if(remainingTime<=0){
+          clearInterval(timerInterval);
+          onFail();
+        }
+      },1000);
+    }
+
+    function updateTimer(){
+      const t=document.getElementById('timer');
+      if(t) t.textContent=`⏳ ${Math.floor(remainingTime/60)}:${String(remainingTime%60).padStart(2,'0')}`;
+    }
+
+    /* DICE LEVELS */
+    function startDiceLevel(l){
+      const target = (l===1)?6:1;
+      const label = (l===1)?'double six':'double one';
+      clearInterval(timerInterval);
+      gameDiv.innerHTML=`
+        <h2>🚪 Door ${levelIndex+1} – Dice Challenge</h2>
+        <div class="graphic">🎲🎲</div>
+        <p>Goal: roll a ${label}.</p>
+        <div class="timer" id="timer"></div>
+        <p id="result"></p>
+        <button onclick="rollDice(${target})">Roll Dice</button>
+      `;
+      startTimer(()=>failLevel());
+    }
+
+    function rollDice(target){
+      const now = Date.now();
+      if(now-lastRoll < 700) return;
+      lastRoll = now;
+      const d1 = Math.floor(Math.random()*6)+1;
+      const d2 = Math.floor(Math.random()*6)+1;
+      document.getElementById('result').textContent = `Roll: ${d1} & ${d2}`;
+      if(d1===target && d2===target){
+        clearInterval(timerInterval);
+        setTimeout(()=>levelSuccess(),1000); // pause 1 second
+      }
+    }
+
+    /* BUCKET LEVELS */
+    function startBucketLevel(l){
+      const puzzle = (l===3)?{a:5,b:3,target:4}:{a:7,b:4,target:5};
+      bucketPuzzle(puzzle);
+    }
+
+    function bucketPuzzle(p){
+      let a=0,b=0;
+      const capA=p.a, capB=p.b, target=p.target;
+      gameDiv.innerHTML=`
+        <h2>🚪 Door ${levelIndex+1} – Water Puzzle</h2>
+        <p>Measure exactly ${target} liters.</p>
+        <div class="timer" id="timer"></div>
+        <div class="bucket-container">
+          <div class='bucket'>
+            <div class='bucket-label' id='labelA'>0 / ${capA} L</div>
+            <div class='water' id='waterA'></div>
+          </div>
+          <div class='bucket'>
+            <div class='bucket-label' id='labelB'>0 / ${capB} L</div>
+            <div class='water' id='waterB'></div>
+          </div>
+        </div>
+        <button onclick='fillA()'>Fill A</button>
+        <button onclick='fillB()'>Fill B</button><br>
+        <button onclick='pourAtoB()'>A → B</button>
+        <button onclick='pourBtoA()'>B → A</button><br>
+        <button onclick='emptyA()'>Empty A</button>
+        <button onclick='emptyB()'>Empty B</button>
+      `;
+      startTimer(()=>failLevel());
+
+      function update(){
+        document.getElementById('waterA').style.height=`${(a/capA)*100}%`;
+        document.getElementById('waterB').style.height=`${(b/capB)*100}%`;
+        document.getElementById('labelA').textContent=`${a} / ${capA} L`;
+        document.getElementById('labelB').textContent=`${b} / ${capB} L`;
+        if(a===target||b===target){
+          clearInterval(timerInterval);
+          setTimeout(()=>levelSuccess(),500);
+        }
+      }
+      window.fillA=()=>{a=capA;update();};
+      window.fillB=()=>{b=capB;update();};
+      window.emptyA=()=>{a=0;update();};
+      window.emptyB=()=>{b=0;update();};
+      window.pourAtoB=()=>{let s=capB-b;let m=Math.min(a,s);a-=m;b+=m;update();};
+      window.pourBtoA=()=>{let s=capA-a;let m=Math.min(b,s);b-=m;a+=m;update();};
+    }
+
+    function levelSuccess(){
+      totalRemainingSeconds += remainingTime;
+      gameDiv.innerHTML=`
+        <h2>✨ Door Opened</h2>
+        <div class='graphic'>🚪➡️</div>
+        <p>Your score for this door: ${remainingTime} </p>
+        <button onclick='nextLevel()'>Continue</button>
+      `;
+    }
+
+    function nextLevel(){
+      levelIndex++;
+      startLevel();
+    }
+
+    function failLevel(){
+      gameDiv.innerHTML=`
+        <h2>⛔ Time's up</h2>
+        <button onclick='startLevel()'>Retry Door</button>
+      `;
+    }
+
+    function showEndScenario(){
+      gameDiv.innerHTML=`
+        <h1>🌅 Freedom</h1>
+        <p>You escaped the vault.</p>
+        <p><strong>Your Highscore:</strong> ${totalRemainingSeconds} </p>
+        <a href='https://forms.gle/TCfvXSUf19chAdYq6' target='_blank'>
+          <button>Help us with a short survey</button>
+        </a>
+        <button onclick='startGame()'>Play Again</button>
+      `;
+    }
+
+    startGame();
+  </script>
+</body>
+</html>
